@@ -1,0 +1,45 @@
+name: Bug report
+description: Report a reproducible problem in the app.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the exact steps.
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: macOS 15.4
+    validations:
+      required: true
+  - type: input
+    id: interval
+    attributes:
+      label: Automatic interval
+      placeholder: Every 4 hours
+  - type: dropdown
+    id: vpn
+    attributes:
+      label: VPN active
+      options:
+        - "No"
+        - "Yes"
+        - "Not sure"
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics report
+      description: Paste the output from `Copy Diagnostics` if available.

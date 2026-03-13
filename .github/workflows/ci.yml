@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+
+      - name: Swift tests
+        run: swift test
+
+      - name: Xcode build
+        run: xcodebuild -project InternetSpeed.xcodeproj -target InternetSpeed -configuration Debug CODE_SIGNING_ALLOWED=NO build
