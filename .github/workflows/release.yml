@@ -12,7 +12,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Select Xcode
         run: sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
