@@ -4,6 +4,7 @@ import SwiftUI
 struct MenuBarView: View {
     @ObservedObject var viewModel: MenuBarViewModel
     @State private var currentDate = Date()
+    @State private var hoveredSampleTime: Date?
 
     private let chartCalendar = Calendar.current
     private let statusTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
@@ -142,11 +143,32 @@ struct MenuBarView: View {
                         .symbolSize(18)
                     }
                 }
+
+                if let hoveredSample {
+                    RuleMark(x: .value("Time", hoveredSample.time))
+                        .foregroundStyle(.secondary.opacity(0.35))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+
+                    PointMark(
+                        x: .value("Time", hoveredSample.time),
+                        y: .value("Speed", hoveredSample.downloadMegabitsPerSecond)
+                    )
+                    .foregroundStyle(Color.blue)
+                    .symbolSize(55)
+
+                    PointMark(
+                        x: .value("Time", hoveredSample.time),
+                        y: .value("Speed", hoveredSample.uploadMegabitsPerSecond)
+                    )
+                    .foregroundStyle(Color.green)
+                    .symbolSize(55)
+                }
             }
             .chartXScale(
                 domain: chartDomain,
                 range: .plotDimension(startPadding: 0, endPadding: 14)
             )
+            .chartYScale(domain: chartYDomain)
             .chartLegend(.hidden)
             .chartForegroundStyleScale([
                 "Download": Color.blue,
@@ -166,6 +188,24 @@ struct MenuBarView: View {
                     AxisValueLabel {
                         if let megabitsPerSecond = value.as(Double.self) {
                             Text("\(Int(megabitsPerSecond.rounded()))")
+                        }
+                    }
+                }
+            }
+            .chartOverlay { proxy in
+                GeometryReader { geometry in
+                    ZStack(alignment: .topLeading) {
+                        Rectangle()
+                            .fill(.clear)
+                            .contentShape(Rectangle())
+                            .onContinuousHover { phase in
+                                updateHoveredSample(for: phase, proxy: proxy, geometry: geometry)
+                            }
+
+                        if let hoveredSample,
+                           let tooltipPosition = tooltipPosition(for: hoveredSample, proxy: proxy, geometry: geometry) {
+                            hoverTooltip(for: hoveredSample)
+                                .position(tooltipPosition)
                         }
                     }
                 }
@@ -221,6 +261,107 @@ struct MenuBarView: View {
                 }
             ),
         ]
+    }
+
+    private var chartYDomain: ClosedRange<Double> {
+        let maxValue = chartSamples
+            .flatMap { [$0.downloadMegabitsPerSecond, $0.uploadMegabitsPerSecond] }
+            .max() ?? 10
+        let paddedMax = max(10, maxValue * 1.2)
+        let roundedMax = ceil(paddedMax / 5) * 5
+        return 0...roundedMax
+    }
+
+    private var hoveredSample: HourlyChartSample? {
+        guard let hoveredSampleTime else {
+            return nil
+        }
+
+        return chartSamples.first { $0.time == hoveredSampleTime }
+    }
+
+    private func hoverTooltip(for sample: HourlyChartSample) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(sample.time.formatted(date: .abbreviated, time: .shortened))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.primary)
+
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(Color.blue)
+                    .frame(width: 6, height: 6)
+                Text("\(sample.downloadMegabitsPerSecond, specifier: "%.1f") Mbps")
+                    .font(.caption2)
+                    .monospacedDigit()
+            }
+
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 6, height: 6)
+                Text("\(sample.uploadMegabitsPerSecond, specifier: "%.1f") Mbps")
+                    .font(.caption2)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+        )
+    }
+
+    private func tooltipPosition(
+        for sample: HourlyChartSample,
+        proxy: ChartProxy,
+        geometry: GeometryProxy
+    ) -> CGPoint? {
+        let plotAreaFrame = geometry[proxy.plotAreaFrame]
+        guard let sampleX = proxy.position(forX: sample.time) else {
+            return nil
+        }
+
+        let minY = min(sample.downloadMegabitsPerSecond, sample.uploadMegabitsPerSecond)
+        let maxY = max(sample.downloadMegabitsPerSecond, sample.uploadMegabitsPerSecond)
+        let midpointY = (minY + maxY) / 2
+        let sampleY = proxy.position(forY: midpointY) ?? 16
+
+        let x = min(max(plotAreaFrame.origin.x + sampleX, plotAreaFrame.minX + 75), plotAreaFrame.maxX - 75)
+        let y = max(16, plotAreaFrame.origin.y + sampleY - 48)
+        return CGPoint(x: x, y: y)
+    }
+
+    private func updateHoveredSample(
+        for phase: HoverPhase,
+        proxy: ChartProxy,
+        geometry: GeometryProxy
+    ) {
+        switch phase {
+        case let .active(location):
+            let plotAreaFrame = geometry[proxy.plotAreaFrame]
+            guard plotAreaFrame.contains(location) else {
+                hoveredSampleTime = nil
+                return
+            }
+
+            let chartX = location.x - plotAreaFrame.origin.x
+            guard let hoveredDate = proxy.value(atX: chartX, as: Date.self) else {
+                hoveredSampleTime = nil
+                return
+            }
+
+            hoveredSampleTime = nearestSample(to: hoveredDate)?.time
+        case .ended:
+            hoveredSampleTime = nil
+        }
+    }
+
+    private func nearestSample(to date: Date) -> HourlyChartSample? {
+        chartSamples.min {
+            abs($0.time.timeIntervalSince(date)) < abs($1.time.timeIntervalSince(date))
+        }
     }
 
     private func legendItem(color: Color, title: String) -> some View {
